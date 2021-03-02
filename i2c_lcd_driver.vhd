@@ -80,7 +80,7 @@ architecture Behavioral of i2c_lcd_driver is
 
   constant C_CLK_FREQ_HZ         : integer := C_CLK_FREQ_MHZ * 1_000_000;
   constant C_I2C_BUS_CLK_FREQ_HZ : integer := 100_000;
-  constant C_I2C_LCD_ADDR        : std_logic_vector(2 downto 0) := "000";  -- Default address is not yet known
+  constant C_I2C_LCD_ADDR        : std_logic_vector(2 downto 0) := "000";  -- Default address is TODO
   constant C_WR_BYTE_INDEX_MAX   : integer := 12;
   constant C_WR_BYTE_READY_INDEX : integer := 7;
 
