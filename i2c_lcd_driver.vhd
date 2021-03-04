@@ -80,10 +80,137 @@ architecture Behavioral of i2c_lcd_driver is
 
   constant C_CLK_FREQ_HZ         : integer := C_CLK_FREQ_MHZ * 1_000_000;
   constant C_I2C_BUS_CLK_FREQ_HZ : integer := 100_000;
-  constant C_I2C_LCD_ADDR        : std_logic_vector(2 downto 0) := "000";  -- Default address is TODO
+  constant C_I2C_LCD_ADDR        : std_logic_vector(2 downto 0) := "000"; 
   constant C_WR_BYTE_INDEX_MAX   : integer := 12;
   constant C_WR_BYTE_READY_INDEX : integer := 7;
 
+  type T_LCD_STATE is (READY_STATE, WRITE_STATE, WAIT_STATE, NEXT_STATE);
+  signal s_lcd_curr_state       : T_LCD_STATE := READY_STATE;
+  
+  signal s_display_data_latched : std_logic_vector(15 downto 0);
+  signal s_lcd_enable           : std_logic;
+  signal s_wr_data_byte_index   : integer;
+
+  signal s_wr_data_byte         : std_logic_vector(3 downto 0);
+
+  signal s_lcd_wr               : std_logic;  --'0' is write, '1' is read
+  signal s_lcd_address          : std_logic_vector(2 downto 0) := C_I2C_LCD_ADDR;
+  signal s_lcd_busy             : std_logic;
+
 begin
+  I2C_MASTER_INST:i2c_master
+  generic map
+  (
+    input_clk => C_CLK_FREQ_HZ,
+    bus_clk   => C_I2C_BUS_CLK_FREQ_HZ
+  )
+  port map
+  (
+    clk       => I_CLK,
+    reset_n   => I_RESET_N,
+    ena       => s_lcd_enable,
+    addr      => s_lcd_address,
+    rw        => s_lcd_wr,
+    data_wr   => s_wr_data_byte,
+    busy      => s_lcd_busy,
+    data_rd   => open,
+    ack_error => open,
+    sda       => IO_I2C_SDA,
+    scl       => IO_I2C_SCL
+  );
+
+  I2C_STATE_MACHINE: process (I_CLK, I_RESET_N)
+  begin
+    if (I_RESET_N = '0') then
+      s_lcd_curr_state             <= READY_STATE;
+      
+  elsif (rising_edge(I_CLK)) then
+        -- I2C lcd state machine logic
+        case s_lcd_curr_state is
+          when READY_STATE =>
+            if (s_display_data_latched /= I_DISPLAY_DATA) then
+              s_lcd_curr_state     <= WRITE_STATE;
+            else
+              s_lcd_curr_state     <= s_lcd_curr_state;
+            end if;
+
+          when WRITE_STATE =>
+            s_lcd_curr_state       <= WAIT_STATE;
+
+          when WAIT_STATE =>
+            if (s_lcd_busy = '1') then
+              s_lcd_curr_state     <= NEXT_STATE;
+            else
+              s_lcd_curr_state     <= s_lcd_curr_state;
+            end if;
+
+            when NEXT_STATE =>
+              if (s_lcd_busy = '0') then
+                if (s_wr_data_byte_index /= C_WR_BYTE_INDEX_MAX) then
+                  s_lcd_curr_state <= WRITE_STATE;
+                else
+                  s_lcd_curr_state <= READY_STATE;
+                end if;
+              else
+                s_lcd_curr_state   <= s_lcd_curr_state;
+              end if;
+
+          -- Error condition, should never occur
+          when others =>
+            s_lcd_curr_state       <= READY_STATE;
+        end case;
+    end if;
+  end process I2C_STATE_MACHINE;
+
+  DATA_FLOW_CTRL: process (I_CLK, I_RESET_N)
+  begin
+    if (I_RESET_N = '0') then
+      s_display_data_latched     <= (others=>'1');
+      s_lcd_enable               <= '0';
+      s_wr_data_byte_index       <=  0;
+      O_BUSY                     <= '1';
+
+    elsif (rising_edge(I_CLK)) then
+      -- Latch data so it does not change during write
+      if (s_lcd_curr_state = READY_STATE) then
+         s_display_data_latched  <= I_DISPLAY_DATA;
+      else
+         s_display_data_latched  <= s_display_data_latched;
+      end if;
+
+      -- Enable signal logic
+      if (s_lcd_curr_state = WRITE_STATE) then
+        s_lcd_enable             <= '1';
+      elsif (s_lcd_curr_state = WAIT_STATE) and
+            (s_lcd_busy = '1') then
+        s_lcd_enable             <= '0';
+      else
+        s_lcd_enable             <= s_lcd_enable;
+      end if;
+
+      -- Data Byte Index logic
+      if (I_DISP_ENABLE = '0') then
+        s_wr_data_byte_index <= 0;
+      elsif (s_lcd_curr_state = NEXT_STATE) and (s_lcd_busy = '0') then
+          if (s_wr_data_byte_index /= C_WR_BYTE_INDEX_MAX) then
+            s_wr_data_byte_index <= s_wr_data_byte_index + 1;
+          else
+            s_wr_data_byte_index <= C_WR_BYTE_READY_INDEX;
+          end if;
+      else
+        s_wr_data_byte_index     <= s_wr_data_byte_index;
+      end if;
+
+      -- Output Busy logic
+      if (s_lcd_curr_state = READY_STATE) then
+        O_BUSY                   <= '0';
+      else
+        O_BUSY                   <= '1';
+      end if;
+    end if;
+  end process DATA_FLOW_CTRL;
+
+
+
 
 end Behavioral;
