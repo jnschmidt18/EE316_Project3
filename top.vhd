@@ -12,7 +12,9 @@ ENTITY top IS
         led1_r : out std_logic;
         led1_b : out std_logic;
         ck_io0 : out std_logic;
-        ck_io1 : out std_logic                                                                                              
+        ck_io1 : out std_logic;
+	ADC_SDA : inout std_logic;
+	ADC_SCL	: inout std_logic
    );
 END top;
 
@@ -61,7 +63,42 @@ component mux is
 		dataout : out std_logic_vector(7 downto 0)
 	);
 end component;
-	
+
+component i2c_master_adc is
+	Generic(
+        	i_clk : integer := 125000000; -- input clock frequency in Hz
+        	bus_clk : integer := 100000); -- clock frequency of scl in Hz
+    	Port ( 
+		clk : in STD_LOGIC; --system clock
+           	reset_n : in STD_LOGIC; --reset (active low)
+          	ena : in STD_LOGIC; -- latch in command
+           	addr : in STD_LOGIC_VECTOR(6 downto 0); --address of target slave (ADC)
+           	rw : in STD_LOGIC; -- 0:write 1:read
+           	data_wr : in STD_LOGIC_VECTOR(7 downto 0); --data to write to slave (ADC)
+           	busy : out STD_LOGIC;
+           	data_rd : out STD_LOGIC_VECTOR(7 downto 0); --data read from slave (ADC)
+           	ack_error : buffer STD_LOGIC; --flag if improper acknowldgment from slave
+           	sda : inout STD_LOGIC; --serial data output of i2c bus
+           	scl : inout STD_LOGIC); -- serial clock input of i2c bus
+end component;
+
+component adc_controller is
+	generic(
+		slave_addr : std_logic_vector(6 downto 0) := "1001000");
+	port(
+		adc_clk		: in	std_logic;
+		adc_rst		: in	std_logic;
+		--instruct	: in	std_logic_vector(7 downto 0);
+		adc_enable	: in	std_logic;
+		adc_source	: in	std_logic_vector(1 downto 0); --to select AIN0 - AIN3
+		adc_sda		: inout	std_logic;
+		adc_scl		: inout	std_logic;
+		adc_odata	: out	std_logic_vector(7 downto 0)
+		--data_rd     : out   std_logic_vector(7 downto 0);
+		--data_rdy	: out 	std_logic
+		);
+end adc_controller;
+
 BEGIN
 
 led0_g <= mode_sig(0);
