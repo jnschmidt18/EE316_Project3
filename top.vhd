@@ -97,7 +97,7 @@ component adc_controller is
 		--data_rd     : out   std_logic_vector(7 downto 0);
 		--data_rdy	: out 	std_logic
 		);
-end adc_controller;
+end component;
 
 BEGIN
 
